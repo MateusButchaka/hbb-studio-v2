@@ -1,6 +1,7 @@
 {
   "name": "hbb-studio-v2-client",
   "version": "1.0.0",
+  "type": "module",
   "description": "HBB Studio v2 - Client",
   "scripts": {
     "dev": "vite",
