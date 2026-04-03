@@ -1,0 +1,14 @@
+{
+  "name": "hbb-studio-v2",
+  "version": "1.0.0",
+  "description": "HBB Studio v2 - Plataforma de Automação de Marketing",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "setup": "cd server && node db/setup.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
