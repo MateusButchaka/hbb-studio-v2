@@ -22,9 +22,30 @@ async function analyzeProduct(imagePath) {
   console.log('🔍 Iniciando análise do produto:', imagePath);
 
   try {
-    const imageData = fs.readFileSync(imagePath);
+    // Sanitize: reject paths containing traversal sequences
+    if (typeof imagePath !== 'string' || imagePath.includes('..') || imagePath.includes('\0')) {
+      throw new Error('Caminho de imagem inválido.');
+    }
+
+    // Validate that imagePath resolves within the project's uploads/outputs directories
+    const projectRoot = path.resolve(__dirname, '..', '..');
+    const allowedDirs = [
+      path.join(projectRoot, 'uploads'),
+      path.join(projectRoot, 'outputs'),
+    ];
+    const resolvedPath = path.resolve(imagePath);
+    const matchedDir = allowedDirs.find(dir => resolvedPath.startsWith(dir + path.sep) || resolvedPath === dir);
+    if (!matchedDir) {
+      throw new Error('Caminho de imagem fora do diretório permitido.');
+    }
+
+    // Reconstruct the path using only the trusted base and the validated relative segment
+    const relativePart = resolvedPath.slice(matchedDir.length);
+    const safePath = path.join(matchedDir, relativePart);
+
+    const imageData = fs.readFileSync(safePath);
     const base64Image = imageData.toString('base64');
-    const extension = path.extname(imagePath).slice(1).toLowerCase();
+    const extension = path.extname(safePath).slice(1).toLowerCase();
     const mimeType = extension === 'jpg' ? 'image/jpeg' : `image/${extension}`;
 
     const response = await openai.chat.completions.create({
