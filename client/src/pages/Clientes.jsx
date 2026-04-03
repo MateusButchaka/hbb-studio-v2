@@ -4,6 +4,8 @@ import { clientsApi } from '../services/api';
 
 const BRAND_TONES = ['luxo', 'moderno', 'divertido', 'profissional', 'minimalista'];
 
+const capitalize = (str) => str.charAt(0).toUpperCase() + str.slice(1);
+
 const DEFAULT_FORM = {
   name: '',
   segment: '',
@@ -360,8 +362,8 @@ export default function Clientes() {
                   className="w-full bg-primary border border-white/10 rounded-lg px-4 py-3 text-white focus:border-gold focus:ring-1 focus:ring-gold/50 outline-none transition-all duration-200 appearance-none cursor-pointer"
                 >
                   {BRAND_TONES.map((tone) => (
-                    <option key={tone} value={tone} className="capitalize">
-                      {tone.charAt(0).toUpperCase() + tone.slice(1)}
+                    <option key={tone} value={tone}>
+                      {capitalize(tone)}
                     </option>
                   ))}
                 </select>

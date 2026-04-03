@@ -8,6 +8,25 @@ const STATUS_LABELS = {
   failed: { label: 'Falhou', classes: 'bg-red-500/10 text-red-400 border-red-500/20' },
 };
 
+function ArtThumbnail({ src, alt }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <ImageIcon size={40} className="text-gray-700" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className="w-full h-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export default function Galeria() {
   const [arts, setArts] = useState([]);
   const [clients, setClients] = useState([]);
@@ -17,31 +36,29 @@ export default function Galeria() {
   const [filterStatus, setFilterStatus] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = {};
-      if (filterClient) params.client_id = filterClient;
-      if (filterStatus) params.status = filterStatus;
-
-      const [artsRes, clientsRes] = await Promise.all([
-        artsApi.getAll(params),
-        clientsApi.getAll(),
-      ]);
-
-      setArts(artsRes.data.data || artsRes.data || []);
-      setClients(clientsRes.data.data || clientsRes.data || []);
-    } catch {
-      setError('Erro ao carregar galeria.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const params = {};
+        if (filterClient) params.client_id = filterClient;
+        if (filterStatus) params.status = filterStatus;
+
+        const [artsRes, clientsRes] = await Promise.all([
+          artsApi.getAll(params),
+          clientsApi.getAll(),
+        ]);
+
+        setArts(artsRes.data.data || artsRes.data || []);
+        setClients(clientsRes.data.data || clientsRes.data || []);
+      } catch {
+        setError('Erro ao carregar galeria.');
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterClient, filterStatus]);
 
   const handleDelete = async (id) => {
@@ -153,23 +170,7 @@ export default function Galeria() {
               >
                 {/* Image */}
                 <div className="aspect-square bg-primary flex items-center justify-center overflow-hidden">
-                  {art.image_url ? (
-                    <img
-                      src={art.image_url}
-                      alt={art.product_name || 'Arte gerada'}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.nextSibling.style.display = 'flex';
-                      }}
-                    />
-                  ) : null}
-                  <div
-                    className="w-full h-full flex items-center justify-center"
-                    style={{ display: art.image_url ? 'none' : 'flex' }}
-                  >
-                    <ImageIcon size={40} className="text-gray-700" />
-                  </div>
+                  <ArtThumbnail src={art.image_url} alt={art.product_name || 'Arte gerada'} />
                 </div>
 
                 {/* Info */}

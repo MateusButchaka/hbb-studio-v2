@@ -15,6 +15,21 @@ const METRIC_CARDS = [
   { key: 'arts_this_month', label: 'Artes este mês', icon: TrendingUp, color: 'text-green-400', bg: 'bg-green-500/10' },
 ];
 
+function ArtThumbnail({ src, alt }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return <ImageIcon size={32} className="text-gray-700" />;
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className="w-full h-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [recentArts, setRecentArts] = useState([]);
@@ -116,18 +131,7 @@ export default function Dashboard() {
                     >
                       {/* Thumbnail */}
                       <div className="aspect-square bg-primary flex items-center justify-center overflow-hidden">
-                        {art.image_url ? (
-                          <img
-                            src={art.image_url}
-                            alt={art.product_name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <ImageIcon size={32} className="text-gray-700" />
-                        )}
+                        <ArtThumbnail src={art.image_url} alt={art.product_name} />
                       </div>
 
                       <div className="p-3 space-y-2">
