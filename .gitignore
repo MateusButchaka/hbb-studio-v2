@@ -5,5 +5,14 @@ uploads/*
 !uploads/.gitkeep
 outputs/*
 !outputs/.gitkeep
+!outputs/arts/
+!outputs/videos/
+!outputs/backgrounds/
+outputs/arts/*
+!outputs/arts/.gitkeep
+outputs/videos/*
+!outputs/videos/.gitkeep
+outputs/backgrounds/*
+!outputs/backgrounds/.gitkeep
 dist/
 .DS_Store
