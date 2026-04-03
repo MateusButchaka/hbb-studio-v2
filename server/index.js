@@ -43,8 +43,7 @@ app.get('/api/health', (req, res) => {
 
 // Routes
 app.use('/api', apiLimiter, clientsRouter);
-app.use('/api/generate-art', generateLimiter);
-app.use('/api', generateRouter);
+app.use('/api', generateLimiter, generateRouter);
 
 // Global error handler
 app.use((err, req, res, next) => {
