@@ -4,13 +4,16 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-if (!process.env.OPENAI_API_KEY) {
-  console.warn('⚠️  OPENAI_API_KEY não está definida. As funções de IA não funcionarão corretamente.');
-}
+const AI_ENABLED = !!process.env.OPENAI_API_KEY;
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openai = null;
+if (AI_ENABLED) {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+} else {
+  console.warn('⚠️  IA desativada — OPENAI_API_KEY não definida. O servidor continuará funcionando sem recursos de IA.');
+}
 
 /**
  * Analyzes a product image using GPT-4o Vision and returns structured JSON.
@@ -19,6 +22,17 @@ const openai = new OpenAI({
  *                            product_category, and key_benefits.
  */
 async function analyzeProduct(imagePath) {
+  if (!AI_ENABLED) {
+    console.warn('⚠️  IA desativada — retornando análise padrão.');
+    return {
+      mood: 'geral',
+      dominant_colors: ['#FFFFFF', '#000000'],
+      suggested_background: 'Fundo neutro e limpo com iluminação suave',
+      product_category: 'produto',
+      key_benefits: ['qualidade', 'design moderno', 'exclusividade'],
+    };
+  }
+
   console.log('🔍 Iniciando análise do produto:', imagePath);
 
   try {
@@ -101,6 +115,15 @@ Responda APENAS com o JSON, sem texto adicional.`,
  * @returns {Promise<Object>} Object with localPath and originalUrl of the generated background.
  */
 async function generateBackground(clientData, analysis) {
+  if (!AI_ENABLED) {
+    console.warn('⚠️  IA desativada — geração de fundo indisponível.');
+    return {
+      localPath: null,
+      originalUrl: null,
+      message: 'IA indisponível — OPENAI_API_KEY não configurada.',
+    };
+  }
+
   console.log('🎨 Iniciando geração de fundo para o cliente:', clientData.name);
 
   const { primary_color, secondary_color, brand_tone, segment } = clientData;
@@ -153,7 +176,11 @@ Instruções obrigatórias:
     };
   } catch (error) {
     console.error('❌ Erro ao gerar fundo:', error.message);
-    throw error;
+    return {
+      localPath: null,
+      originalUrl: null,
+      message: `Erro ao gerar fundo: ${error.message}`,
+    };
   }
 }
 
@@ -195,4 +222,5 @@ async function downloadImage(url, outputPath) {
 module.exports = {
   analyzeProduct,
   generateBackground,
+  AI_ENABLED,
 };
