@@ -6,6 +6,25 @@ const ffmpeg = require('fluent-ffmpeg');
 
 const OUTPUT_DIR = path.join(__dirname, '..', '..', 'outputs');
 
+const ROOT_DIR = path.join(__dirname, '..', '..');
+
+/**
+ * Validates that a file path resolves within an allowed base directory,
+ * preventing path traversal attacks.
+ * @param {string} filePath - The path to validate.
+ * @param {string} allowedBase - The base directory that the path must reside in.
+ * @returns {string} The resolved (normalized) safe path.
+ * @throws {Error} If the path is outside the allowed base.
+ */
+function sanitizePath(filePath, allowedBase) {
+  const resolved = path.resolve(filePath);
+  const base = path.resolve(allowedBase);
+  if (!resolved.startsWith(base + path.sep) && resolved !== base) {
+    throw new Error('File path is outside the allowed directory');
+  }
+  return resolved;
+}
+
 /**
  * Ensures a directory exists, creating it recursively if needed.
  * @param {string} dir - Directory path.
@@ -24,7 +43,12 @@ function ensureDir(dir) {
  * @returns {Promise<string>} Path to the processed image (PNG with transparency).
  */
 async function removeBackground(productImagePath) {
-  console.log('🧹 Removendo fundo da imagem:', productImagePath);
+  // Sanitize and validate the path before any file system operation
+  const safePath = sanitizePath(productImagePath, ROOT_DIR);
+  if (!fs.existsSync(safePath)) {
+    throw new Error(`Arquivo não encontrado: ${safePath}`);
+  }
+  console.log('🧹 Removendo fundo da imagem:', safePath);
 
   const outputDir = path.join(OUTPUT_DIR, 'processed');
   ensureDir(outputDir);
@@ -33,14 +57,14 @@ async function removeBackground(productImagePath) {
   const outputPath = path.join(outputDir, filename);
 
   try {
-    const metadata = await sharp(productImagePath).metadata();
+    const metadata = await sharp(safePath).metadata();
 
     if (metadata.hasAlpha) {
       // PNG com canal alpha — apenas converter e salvar
-      await sharp(productImagePath).png().toFile(outputPath);
+      await sharp(safePath).png().toFile(outputPath);
     } else {
       // Imagem sem alpha — converter para PNG preservando cores
-      await sharp(productImagePath)
+      await sharp(safePath)
         .png()
         .toFile(outputPath);
     }
@@ -127,18 +151,181 @@ async function composeArt(backgroundPath, productImagePath, options = {}) {
 }
 
 /**
+ * Composes a Clean Lookbook art: solid background, drop shadow, centered product,
+ * and professional hardcoded typography (hook + price).
+ * @param {string} productImagePath - Path to the (processed) product image (PNG).
+ * @param {Object} options - Options for composition.
+ * @param {string} [options.price] - Price of the product (e.g. "49,90").
+ * @param {string} [options.productName] - Optional product name for sub-text.
+ * @param {string} [options.hookText] - Custom hook text. Default: 'O tênis que está bombando no TikTok'.
+ * @param {string} [options.bgColor='#F5F5F0'] - Solid background color.
+ * @returns {Promise<string>} Path to the final composed art image.
+ */
+async function composeCleanLookbook(productImagePath, options = {}) {
+  // Sanitize and validate the path before any file system operation
+  const safePath = sanitizePath(productImagePath, ROOT_DIR);
+  if (!fs.existsSync(safePath)) {
+    throw new Error(`Arquivo não encontrado: ${safePath}`);
+  }
+  console.log('🖼️  Compondo arte Clean Lookbook...');
+
+  const {
+    price,
+    productName,
+    hookText = 'O tênis que está bombando no TikTok',
+    bgColor = '#F5F5F0',
+  } = options;
+
+  const outputDir = path.join(OUTPUT_DIR, 'arts');
+  ensureDir(outputDir);
+
+  const filename = `lookbook_${Date.now()}_${uuidv4()}.png`;
+  const outputPath = path.join(outputDir, filename);
+
+  const canvasWidth = 1080;
+  const canvasHeight = 1440;
+
+  try {
+    // Layer 0: Solid background
+    const background = await sharp({
+      create: {
+        width: canvasWidth,
+        height: canvasHeight,
+        channels: 3,
+        background: bgColor,
+      },
+    })
+      .png()
+      .toBuffer();
+
+    // Resize product to fit within the central area (max 75% of canvas width)
+    const maxProductWidth = Math.floor(canvasWidth * 0.75);
+    const maxProductHeight = Math.floor(canvasHeight * 0.6);
+
+    const productBuffer = await sharp(safePath)
+      .resize(maxProductWidth, maxProductHeight, { fit: 'inside', withoutEnlargement: true })
+      .png()
+      .toBuffer();
+
+    const productMeta = await sharp(productBuffer).metadata();
+    const productLeft = Math.floor((canvasWidth - productMeta.width) / 2);
+    const productTop = Math.floor((canvasHeight - productMeta.height) / 2) - 40;
+    const safeProductTop = Math.max(productTop, 120);
+
+    // Layer 1: Drop shadow — dark blurred copy of the product placed below it
+    const shadowBuffer = await sharp(productBuffer)
+      .tint({ r: 0, g: 0, b: 0 })
+      .blur(25)
+      .modulate({ brightness: 0.3 })
+      .png()
+      .toBuffer();
+
+    const shadowLeft = productLeft + 8;
+    const shadowTop = safeProductTop + 15;
+
+    // Layer 2: Text overlay (clean lookbook style)
+    const textOverlay = await addTextOverlay({
+      hookText,
+      price,
+      productName,
+      canvasWidth,
+      canvasHeight,
+      lookbook: true,
+    });
+
+    const composites = [
+      { input: shadowBuffer, left: shadowLeft, top: shadowTop, blend: 'multiply' },
+      { input: productBuffer, left: productLeft, top: safeProductTop },
+    ];
+
+    if (textOverlay) {
+      composites.push({ input: textOverlay, left: 0, top: 0 });
+    }
+
+    await sharp(background)
+      .composite(composites)
+      .png()
+      .toFile(outputPath);
+
+    console.log('✅ Arte Clean Lookbook salva em:', outputPath);
+    return outputPath;
+  } catch (error) {
+    console.error('❌ Erro ao compor arte lookbook:', error.message);
+    throw error;
+  }
+}
+
+/**
  * Creates an SVG text overlay for the art composition.
+ * When `options.lookbook` is true, renders clean hardcoded typography (hook + price).
+ * Otherwise renders the legacy branded style (product name + price).
  * @param {Object} options - Options for the overlay.
+ * @param {string} [options.hookText] - Lookbook hook text (used when lookbook=true).
  * @param {string} options.productName - Name of the product.
  * @param {string} [options.price] - Price of the product.
  * @param {Object} [options.clientData] - Client branding data.
  * @param {number} options.canvasWidth - Width of the canvas.
  * @param {number} options.canvasHeight - Height of the canvas.
+ * @param {boolean} [options.lookbook=false] - Use clean lookbook typography.
  * @returns {Promise<Buffer|null>} SVG buffer or null if no text to render.
  */
 async function addTextOverlay(options = {}) {
-  const { productName, price, clientData = {}, canvasWidth = 1080, canvasHeight = 1440 } = options;
+  const {
+    hookText,
+    productName,
+    price,
+    clientData = {},
+    canvasWidth = 1080,
+    canvasHeight = 1440,
+    lookbook = false,
+  } = options;
 
+  if (lookbook) {
+    // Clean Lookbook typography — no AI colors, no stroke, just clean dark text
+    const svgLines = [];
+    const fontFamily = '"Bebas Neue", Impact, "Arial Black", sans-serif';
+    const textColor = '#1A1A1A';
+
+    if (hookText) {
+      svgLines.push(
+        `<text x="${canvasWidth / 2}" y="90" ` +
+        `font-family=${JSON.stringify(fontFamily)} font-size="48" ` +
+        `font-weight="700" fill="${textColor}" text-anchor="middle" ` +
+        `letter-spacing="2">` +
+        `${escapeXml(String(hookText).toUpperCase().slice(0, 60))}</text>`
+      );
+    }
+
+    if (price) {
+      const displayPrice = `R$ ${String(price).slice(0, 20)}`;
+      svgLines.push(
+        `<text x="${canvasWidth / 2}" y="${canvasHeight - 120}" ` +
+        `font-family=${JSON.stringify(fontFamily)} font-size="72" ` +
+        `font-weight="900" fill="${textColor}" text-anchor="middle" ` +
+        `letter-spacing="3">` +
+        `${escapeXml(displayPrice)}</text>`
+      );
+    }
+
+    if (productName) {
+      const displayName = String(productName).slice(0, 60);
+      svgLines.push(
+        `<text x="${canvasWidth / 2}" y="${canvasHeight - 60}" ` +
+        `font-family="Arial, sans-serif" font-size="28" ` +
+        `font-weight="400" fill="#555555" text-anchor="middle">` +
+        `${escapeXml(displayName)}</text>`
+      );
+    }
+
+    if (svgLines.length === 0) return null;
+
+    const svg = `<svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
+  ${svgLines.join('\n  ')}
+</svg>`;
+    return Buffer.from(svg);
+  }
+
+  // Legacy branded style
   if (!productName && !price) return null;
 
   const primaryColor = clientData.primary_color || '#C9A84C';
@@ -214,10 +401,21 @@ function getDefaultMusicTrack() {
  * @param {string} artImagePath - Path to the final art image.
  * @param {Object} [options] - Options for the video.
  * @param {string} [options.style='elegante'] - Animation style: 'elegante' or 'dinamico'.
+ * @param {string} [options.audioPath] - Optional path to a custom audio file. Falls back to default music.
  * @returns {Promise<string>} Path to the generated video file.
  */
 function createVideo(artImagePath, options = {}) {
-  const { style = 'elegante' } = options;
+  let safePath;
+  try {
+    safePath = sanitizePath(artImagePath, ROOT_DIR);
+  } catch (err) {
+    return Promise.reject(err);
+  }
+  if (!fs.existsSync(safePath)) {
+    return Promise.reject(new Error(`Arquivo não encontrado: ${safePath}`));
+  }
+
+  const { style = 'elegante', audioPath } = options;
 
   console.log(`🎬 Criando vídeo com efeito Ken Burns (estilo: ${style})...`);
 
@@ -242,10 +440,10 @@ function createVideo(artImagePath, options = {}) {
     `y='ih/2-(ih/zoom/2)':` +
     `d=${totalFrames}:s=1080x1440:fps=${fps}`;
 
-  const musicTrack = getDefaultMusicTrack();
+  const musicTrack = (audioPath && fs.existsSync(audioPath)) ? audioPath : getDefaultMusicTrack();
 
   return new Promise((resolve, reject) => {
-    const command = ffmpeg(artImagePath)
+    const command = ffmpeg(safePath)
       .inputOptions(['-loop 1'])
       .videoFilter(zoompanFilter)
       .videoCodec('libx264')
@@ -290,7 +488,8 @@ function createVideo(artImagePath, options = {}) {
 
 module.exports = {
   removeBackground,
-  composeArt,
+  composeArt,           // legacy
+  composeCleanLookbook, // nova principal
   addTextOverlay,
   createVideo,
 };

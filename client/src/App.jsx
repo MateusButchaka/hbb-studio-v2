@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import CreateArt from './pages/CreateArt';
 import Clientes from './pages/Clientes';
 import Galeria from './pages/Galeria';
+import ContentFactory from './pages/ContentFactory';
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="create" element={<CreateArt />} />
         <Route path="clients" element={<Clientes />} />
         <Route path="gallery" element={<Galeria />} />
+        <Route path="lookbook" element={<ContentFactory />} />
       </Route>
     </Routes>
   );

@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db/setup');
 const { analyzeProduct, generateBackground } = require('../services/ai_service');
-const { removeBackground, composeArt, createVideo } = require('../services/media_engine');
+const { removeBackground, composeArt, composeCleanLookbook, createVideo } = require('../services/media_engine');
 const { uploadProduct } = require('../middleware/upload');
 
 const router = express.Router();
@@ -238,6 +238,112 @@ router.get('/dashboard', (req, res) => {
   } catch (error) {
     console.error('❌ Erro ao buscar dados do dashboard:', error.message);
     res.status(500).json({ success: false, error: 'Erro ao buscar dados do dashboard' });
+  }
+});
+
+// POST /api/generate-lookbook — Pipeline Clean Lookbook (TikTok Content Factory)
+router.post('/generate-lookbook', uploadProduct.single('product_image'), async (req, res) => {
+  let artId = null;
+
+  try {
+    const {
+      client_id,
+      product_name,
+      price,
+      hook_text,
+      generate_video = 'false',
+      video_style = 'elegante',
+    } = req.body;
+
+    // 1. Validar campos obrigatórios
+    if (!product_name || !req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'Campos obrigatórios: product_name e product_image (arquivo)',
+      });
+    }
+
+    // 2. Resolver client_id: usar o fornecido ou o primeiro cliente disponível
+    let resolvedClientId = client_id ? parseInt(client_id, 10) : null;
+    if (!resolvedClientId) {
+      const firstClient = db.prepare('SELECT id FROM clients ORDER BY id ASC LIMIT 1').get();
+      if (!firstClient) {
+        return res.status(400).json({ success: false, error: 'Nenhum cliente encontrado. Cadastre um cliente primeiro.' });
+      }
+      resolvedClientId = firstClient.id;
+    }
+
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(resolvedClientId);
+    if (!client) {
+      return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
+    }
+
+    const uploadedFilePath = req.file.path;
+
+    // 3. Inserir registro inicial com status 'processing'
+    const insertResult = db.prepare(
+      `INSERT INTO arts (client_id, product_name, price, status) VALUES (?, ?, ?, 'processing')`
+    ).run(resolvedClientId, product_name, price || null);
+    artId = insertResult.lastInsertRowid;
+
+    console.log(`🎨 Iniciando pipeline lookbook para arte ID ${artId} — produto: ${product_name}`);
+
+    // 4. Remover fundo do produto
+    const processedProductPath = await removeBackground(uploadedFilePath);
+
+    // 5. Compor arte Clean Lookbook (sem IA de fundo)
+    const artFinalPath = await composeCleanLookbook(processedProductPath, {
+      price,
+      productName: product_name,
+      hookText: hook_text || undefined,
+    });
+
+    const imageUrl = '/' + path.relative(path.join(__dirname, '..', '..'), artFinalPath).replace(/\\/g, '/');
+
+    // 6. Atualizar registro na tabela arts
+    db.prepare(
+      `UPDATE arts SET final_path=?, image_url=?, status='completed' WHERE id=?`
+    ).run(artFinalPath, imageUrl, artId);
+
+    const artRecord = db.prepare('SELECT * FROM arts WHERE id = ?').get(artId);
+
+    let videoRecord = null;
+
+    // 7. Gerar vídeo se solicitado
+    if (generate_video === 'true') {
+      console.log('🎬 Iniciando geração de vídeo lookbook...');
+      const videoPath = await createVideo(artFinalPath, { style: video_style });
+
+      const videoInsert = db.prepare(
+        `INSERT INTO videos (client_id, product_name, video_path, style) VALUES (?, ?, ?, ?)`
+      ).run(resolvedClientId, product_name, videoPath, video_style);
+
+      videoRecord = db.prepare('SELECT * FROM videos WHERE id = ?').get(videoInsert.lastInsertRowid);
+      console.log('✅ Vídeo lookbook criado e salvo no banco, ID:', videoRecord.id);
+    }
+
+    console.log(`✅ Arte Lookbook ID ${artId} gerada com sucesso!`);
+
+    res.json({
+      success: true,
+      data: {
+        art: artRecord,
+        video: videoRecord,
+      },
+      message: 'Arte lookbook gerada com sucesso!',
+    });
+  } catch (error) {
+    console.error('❌ Erro no pipeline lookbook:', error.message);
+
+    if (artId) {
+      try {
+        db.prepare("UPDATE arts SET status='failed' WHERE id=?").run(artId);
+      } catch (dbError) {
+        console.error('❌ Erro ao atualizar status de falha:', dbError.message);
+      }
+    }
+
+    res.status(500).json({ success: false, error: error.message || 'Erro ao gerar arte lookbook' });
   }
 });
 
