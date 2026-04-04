@@ -158,6 +158,8 @@ export default function ContentFactory() {
   };
 
   const handleDownload = (url, filename) => {
+    // Only allow relative paths or blob: URLs to prevent javascript: injection
+    if (!url || (!url.startsWith('/') && !url.startsWith('blob:'))) return;
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;

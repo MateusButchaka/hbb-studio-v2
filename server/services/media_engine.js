@@ -6,6 +6,23 @@ const ffmpeg = require('fluent-ffmpeg');
 
 const OUTPUT_DIR = path.join(__dirname, '..', '..', 'outputs');
 
+const ROOT_DIR = path.join(__dirname, '..', '..');
+
+/**
+ * Validates that a file path resolves within an allowed base directory,
+ * preventing path traversal attacks.
+ * @param {string} filePath - The path to validate.
+ * @param {string} allowedBase - The base directory that the path must reside in.
+ * @throws {Error} If the path is outside the allowed base.
+ */
+function validatePathWithinBase(filePath, allowedBase) {
+  const resolved = path.resolve(filePath);
+  const base = path.resolve(allowedBase);
+  if (!resolved.startsWith(base + path.sep) && resolved !== base) {
+    throw new Error(`Caminho de arquivo inválido: acesso fora do diretório permitido`);
+  }
+}
+
 /**
  * Ensures a directory exists, creating it recursively if needed.
  * @param {string} dir - Directory path.
@@ -27,6 +44,7 @@ async function removeBackground(productImagePath) {
   if (!fs.existsSync(productImagePath)) {
     throw new Error(`Arquivo não encontrado: ${productImagePath}`);
   }
+  validatePathWithinBase(productImagePath, ROOT_DIR);
   console.log('🧹 Removendo fundo da imagem:', productImagePath);
 
   const outputDir = path.join(OUTPUT_DIR, 'processed');
@@ -144,6 +162,7 @@ async function composeCleanLookbook(productImagePath, options = {}) {
   if (!fs.existsSync(productImagePath)) {
     throw new Error(`Arquivo não encontrado: ${productImagePath}`);
   }
+  validatePathWithinBase(productImagePath, ROOT_DIR);
   console.log('🖼️  Compondo arte Clean Lookbook...');
 
   const {
@@ -384,6 +403,11 @@ function getDefaultMusicTrack() {
 function createVideo(artImagePath, options = {}) {
   if (!fs.existsSync(artImagePath)) {
     return Promise.reject(new Error(`Arquivo não encontrado: ${artImagePath}`));
+  }
+  try {
+    validatePathWithinBase(artImagePath, ROOT_DIR);
+  } catch (err) {
+    return Promise.reject(err);
   }
 
   const { style = 'elegante', audioPath } = options;
