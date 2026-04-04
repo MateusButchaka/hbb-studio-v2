@@ -157,13 +157,21 @@ export default function ContentFactory() {
     setError(null);
   };
 
-  const handleDownload = (url, filename) => {
-    // Only allow relative paths or blob: URLs to prevent javascript: injection
+  const handleDownload = async (url, filename) => {
     if (!url || (!url.startsWith('/') && !url.startsWith('blob:'))) return;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // fallback: open in new tab
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const isFormValid = productImage && productName;

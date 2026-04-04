@@ -13,14 +13,16 @@ const ROOT_DIR = path.join(__dirname, '..', '..');
  * preventing path traversal attacks.
  * @param {string} filePath - The path to validate.
  * @param {string} allowedBase - The base directory that the path must reside in.
+ * @returns {string} The resolved (normalized) safe path.
  * @throws {Error} If the path is outside the allowed base.
  */
-function validatePathWithinBase(filePath, allowedBase) {
+function sanitizePath(filePath, allowedBase) {
   const resolved = path.resolve(filePath);
   const base = path.resolve(allowedBase);
   if (!resolved.startsWith(base + path.sep) && resolved !== base) {
-    throw new Error(`Caminho de arquivo inválido: acesso fora do diretório permitido`);
+    throw new Error('File path is outside the allowed directory');
   }
+  return resolved;
 }
 
 /**
@@ -41,11 +43,12 @@ function ensureDir(dir) {
  * @returns {Promise<string>} Path to the processed image (PNG with transparency).
  */
 async function removeBackground(productImagePath) {
-  if (!fs.existsSync(productImagePath)) {
-    throw new Error(`Arquivo não encontrado: ${productImagePath}`);
+  // Sanitize and validate the path before any file system operation
+  const safePath = sanitizePath(productImagePath, ROOT_DIR);
+  if (!fs.existsSync(safePath)) {
+    throw new Error(`Arquivo não encontrado: ${safePath}`);
   }
-  validatePathWithinBase(productImagePath, ROOT_DIR);
-  console.log('🧹 Removendo fundo da imagem:', productImagePath);
+  console.log('🧹 Removendo fundo da imagem:', safePath);
 
   const outputDir = path.join(OUTPUT_DIR, 'processed');
   ensureDir(outputDir);
@@ -54,14 +57,14 @@ async function removeBackground(productImagePath) {
   const outputPath = path.join(outputDir, filename);
 
   try {
-    const metadata = await sharp(productImagePath).metadata();
+    const metadata = await sharp(safePath).metadata();
 
     if (metadata.hasAlpha) {
       // PNG com canal alpha — apenas converter e salvar
-      await sharp(productImagePath).png().toFile(outputPath);
+      await sharp(safePath).png().toFile(outputPath);
     } else {
       // Imagem sem alpha — converter para PNG preservando cores
-      await sharp(productImagePath)
+      await sharp(safePath)
         .png()
         .toFile(outputPath);
     }
@@ -159,10 +162,11 @@ async function composeArt(backgroundPath, productImagePath, options = {}) {
  * @returns {Promise<string>} Path to the final composed art image.
  */
 async function composeCleanLookbook(productImagePath, options = {}) {
-  if (!fs.existsSync(productImagePath)) {
-    throw new Error(`Arquivo não encontrado: ${productImagePath}`);
+  // Sanitize and validate the path before any file system operation
+  const safePath = sanitizePath(productImagePath, ROOT_DIR);
+  if (!fs.existsSync(safePath)) {
+    throw new Error(`Arquivo não encontrado: ${safePath}`);
   }
-  validatePathWithinBase(productImagePath, ROOT_DIR);
   console.log('🖼️  Compondo arte Clean Lookbook...');
 
   const {
@@ -198,7 +202,7 @@ async function composeCleanLookbook(productImagePath, options = {}) {
     const maxProductWidth = Math.floor(canvasWidth * 0.75);
     const maxProductHeight = Math.floor(canvasHeight * 0.6);
 
-    const productBuffer = await sharp(productImagePath)
+    const productBuffer = await sharp(safePath)
       .resize(maxProductWidth, maxProductHeight, { fit: 'inside', withoutEnlargement: true })
       .png()
       .toBuffer();
@@ -401,13 +405,14 @@ function getDefaultMusicTrack() {
  * @returns {Promise<string>} Path to the generated video file.
  */
 function createVideo(artImagePath, options = {}) {
-  if (!fs.existsSync(artImagePath)) {
-    return Promise.reject(new Error(`Arquivo não encontrado: ${artImagePath}`));
-  }
+  let safePath;
   try {
-    validatePathWithinBase(artImagePath, ROOT_DIR);
+    safePath = sanitizePath(artImagePath, ROOT_DIR);
   } catch (err) {
     return Promise.reject(err);
+  }
+  if (!fs.existsSync(safePath)) {
+    return Promise.reject(new Error(`Arquivo não encontrado: ${safePath}`));
   }
 
   const { style = 'elegante', audioPath } = options;
@@ -438,7 +443,7 @@ function createVideo(artImagePath, options = {}) {
   const musicTrack = (audioPath && fs.existsSync(audioPath)) ? audioPath : getDefaultMusicTrack();
 
   return new Promise((resolve, reject) => {
-    const command = ffmpeg(artImagePath)
+    const command = ffmpeg(safePath)
       .inputOptions(['-loop 1'])
       .videoFilter(zoompanFilter)
       .videoCodec('libx264')
