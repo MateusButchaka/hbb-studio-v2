@@ -27,4 +27,11 @@ export const dashboardApi = {
   getData: () => api.get('/dashboard'),
 };
 
+export const lookbookApi = {
+  generate: (formData) => api.post('/generate-lookbook', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 180000, // 3 min
+  }),
+};
+
 export default api;
